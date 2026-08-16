@@ -718,6 +718,19 @@ function fmtClock(sec){
   const p = n => String(n).padStart(2, '0');
   return p(h) + ':' + p(m) + ':' + p(s);
 }
+/* Autocorrect, predictive text and the spelling dictionary follow the app's
+   language, not the browser's — writing a note in Polish should not be fought
+   by an English dictionary. Safari reads `lang` off the field itself, so it is
+   set per element and re-applied whenever the language changes.
+   `assist:false` is for titles and names: right dictionary, but nothing
+   rewrites "Dostojewski" behind your back. */
+function writeIn(el, assist = true){
+  el.lang = LANG;
+  el.spellcheck = assist;
+  el.setAttribute('autocorrect', assist ? 'on' : 'off');
+  el.setAttribute('autocapitalize', assist ? 'sentences' : 'words');
+}
+
 function relTime(ts){
   const s = Math.round((Date.now() - ts) / 1000);
   if (s < 60) return t('justNow');
@@ -1294,11 +1307,9 @@ function bookForm(existing){
           '<div class="cam">' + icon('camera', 17) + '</div></div>' +
         '<div class="bf-fields">' +
           '<label class="field"><span>' + esc(t('title')) + '</span>' +
-            '<input class="f-title" type="text" autocapitalize="words" autocorrect="off" ' +
-            'spellcheck="false" placeholder="' + esc(t('titlePh')) + '"></label>' +
+            '<input class="f-title" type="text" placeholder="' + esc(t('titlePh')) + '"></label>' +
           '<label class="field"><span>' + esc(t('author')) + '</span>' +
-            '<input class="f-author" type="text" autocapitalize="words" autocorrect="off" ' +
-            'spellcheck="false" placeholder="' + esc(t('authorPh')) + '"></label>' +
+            '<input class="f-author" type="text" placeholder="' + esc(t('authorPh')) + '"></label>' +
         '</div>' +
       '</div>' +
       '<button class="tile pages-tile" style="width:100%;margin:8px 2px 4px">' +
@@ -1306,6 +1317,7 @@ function bookForm(existing){
     '</div>');
 
     const tIn = $('.f-title', wrap), aIn = $('.f-author', wrap);
+    writeIn(tIn, false); writeIn(aIn, false);
     tIn.value = b.title || ''; aIn.value = b.author || '';
     const pagesB = $('.pages-tile b', wrap);
     const paintPages = () => {
@@ -1620,6 +1632,7 @@ function noteView(noteId, focus = false){
     $('.bar-btn.back span', el).textContent = bk ? (bk.title || t('untitled')) : t('shelf');
     $('[data-act="photo"] span', el).textContent = t('addPhoto');
     area.placeholder = t('notePh');
+    writeIn(area);
     if (area.value !== nt.text) area.value = nt.text || '';
     autoGrow();
     renderShots();

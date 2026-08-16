@@ -1,7 +1,7 @@
 /* Bookresio — offline shell. The app is one HTML file plus icons; your books
    never go near the cache (they live in IndexedDB). Bump CACHE on every
    release so the new shell replaces the old one. */
-const CACHE = 'bookresio-v1';
+const CACHE = 'bookresio-v2';
 const SHELL = [
   './',
   './index.html',
