@@ -1,0 +1,1983 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Bookresio</title>
+<meta name="description" content="Reading progress, kept on your phone — pages, per-book timer, notes and photos.">
+<meta name="theme-color" content="#FAF6EF">
+<meta name="color-scheme" content="light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bookresio">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="./icons/favicon-64.png" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<style>
+/* ==========================================================================
+   Bookresio — design tokens
+   Ground: creamy white. Accent: baby blue, deepened just enough to hold its
+   own as text. Chrome is set in the native iOS face; titles are set in a book
+   serif, so a shelf of books reads like a shelf of books.
+   ========================================================================== */
+:root{
+  --paper:#FAF6EF;          /* app ground */
+  --paper-sunk:#F1EBE0;     /* wells, inputs, pressed states */
+  --card:#FFFDF9;           /* raised surfaces */
+  --edge:#E7E0D3;           /* hairlines */
+  --edge-soft:#F0E9DC;
+
+  --ink:#20303C;            /* text — near-black, biased blue */
+  --ink-2:#5A6C7A;          /* secondary */
+  --ink-3:#93A2AD;          /* tertiary, placeholders */
+
+  --blue:#5B93C7;           /* the mark, icons, bar fills */
+  --blue-deep:#3E6E9B;      /* blue that is safe as text */
+  --blue-mid:#8FBEE4;       /* baby blue */
+  --blue-soft:#CFE3F4;
+  --blue-tint:#EAF3FB;
+  --clay:#B0533A;           /* destructive only */
+  --gold:#B98A3C;           /* finished */
+
+  --r-xl:24px; --r-lg:18px; --r-md:13px; --r-sm:9px;
+  --ease:cubic-bezier(.32,.72,0,1);
+  --ease-out:cubic-bezier(.22,1,.36,1);
+
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable","Segoe UI",system-ui,sans-serif;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+  --bar-h:52px;
+  --kb:0px;                 /* on-screen keyboard height, from visualViewport */
+  --gut:18px;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--ui);
+  font-size:16px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-touch-callout:none;
+  user-select:none;
+  text-rendering:optimizeLegibility;
+}
+button,input,textarea{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;cursor:pointer;touch-action:manipulation}
+svg.i{display:block;flex:none}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+
+/* ---------- view stack ---------- */
+#stack{position:fixed;inset:0;overflow:hidden}
+.view{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  background:var(--paper);
+  will-change:transform;
+}
+.view.enter{transform:translate3d(100%,0,0)}
+.view.animating{transition:transform .42s var(--ease),opacity .42s var(--ease)}
+.view.behind{transform:translate3d(-24%,0,0);opacity:.55}
+
+/* ---------- top bar ---------- */
+.bar{
+  position:relative;z-index:5;flex:none;
+  padding-top:var(--sat);
+  height:calc(var(--bar-h) + var(--sat));
+  display:flex;align-items:center;gap:2px;
+  padding-left:max(8px,var(--sal));padding-right:max(8px,var(--sar));
+  background:color-mix(in srgb,var(--paper) 76%,transparent);
+  -webkit-backdrop-filter:saturate(180%) blur(18px);
+  backdrop-filter:saturate(180%) blur(18px);
+}
+.bar::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:var(--edge);opacity:0;transition:opacity .25s ease;
+}
+.bar.scrolled::after{opacity:1}
+.bar-title{
+  flex:1;min-width:0;text-align:center;
+  font-size:16px;font-weight:600;letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  opacity:0;transform:translateY(6px);
+  transition:opacity .22s ease,transform .22s ease;
+  padding:0 4px;
+}
+.bar.scrolled .bar-title{opacity:1;transform:none}
+.bar-side{display:flex;align-items:center;gap:2px;flex:none}
+.bar-side.left{min-width:44px;justify-content:flex-start}
+.bar-side.right{min-width:44px;justify-content:flex-end}
+.bar-btn{
+  width:44px;height:44px;border-radius:13px;
+  display:grid;place-items:center;color:var(--blue-deep);
+  transition:background .18s ease,transform .12s var(--ease-out);
+}
+.bar-btn:active{background:var(--blue-tint);transform:scale(.9)}
+.bar-btn.back{width:auto;padding:0 8px 0 4px;gap:1px;grid-auto-flow:column;align-items:center}
+.bar-btn.back span{font-size:16px;letter-spacing:-.01em;max-width:92px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- scroller ---------- */
+.scroll{
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;
+}
+.pad{
+  padding:2px max(var(--gut),var(--sal)) calc(150px + var(--sab)) max(var(--gut),var(--sar));
+  max-width:760px;margin:0 auto;
+}
+.big-title{
+  font-family:var(--serif);
+  font-size:34px;line-height:1.12;font-weight:600;letter-spacing:-.015em;
+  margin:2px 0 2px;text-wrap:balance;
+}
+.count{color:var(--ink-3);font-size:13.5px;margin:0 0 20px;letter-spacing:.01em}
+
+/* ---------- shelf ---------- */
+.hero-mark{width:34px;color:var(--blue);margin:10px 0 6px}
+.hero-mark svg{width:100%;height:auto;display:block}
+.list{display:flex;flex-direction:column;gap:10px}
+
+.book{
+  display:flex;align-items:stretch;gap:14px;width:100%;text-align:left;
+  padding:12px;border-radius:var(--r-lg);
+  background:var(--card);
+  box-shadow:0 1px 0 rgba(32,48,60,.045),0 1px 3px rgba(32,48,60,.05);
+  transition:transform .16s var(--ease-out),box-shadow .2s ease;
+}
+.book:active{transform:scale(.985);box-shadow:0 1px 0 rgba(32,48,60,.03)}
+.book.done{background:linear-gradient(180deg,var(--blue-tint),var(--card) 60%)}
+
+/* cover */
+.cover{
+  position:relative;flex:none;width:54px;height:78px;border-radius:5px;
+  overflow:hidden;background:var(--blue-tint);
+  box-shadow:0 1px 2px rgba(32,48,60,.14),0 4px 10px rgba(32,48,60,.07);
+}
+.cover::after{                                   /* the spine */
+  content:"";position:absolute;left:0;top:0;bottom:0;width:5px;
+  background:linear-gradient(90deg,rgba(32,48,60,.16),rgba(32,48,60,0));
+  pointer-events:none;
+}
+.cover img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .3s ease}
+.cover img.ready{opacity:1}
+.cover .initial{
+  position:absolute;inset:0;display:grid;place-items:center;
+  font-family:var(--serif);font-size:26px;font-weight:600;color:var(--blue);
+  letter-spacing:.02em;
+}
+.cover.lg{width:104px;height:152px;border-radius:7px}
+.cover.lg .initial{font-size:48px}
+.cover.xl{width:132px;height:194px;border-radius:8px}
+.cover.xl .initial{font-size:60px}
+
+.book-main{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0}
+.book-head{display:flex;align-items:baseline;gap:10px}
+.book-title{
+  flex:1;min-width:0;font-family:var(--serif);font-size:17.5px;font-weight:600;
+  letter-spacing:-.01em;line-height:1.25;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.book-pct{flex:none;font-size:15px;font-weight:650;color:var(--blue-deep);letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
+.book.done .book-pct{color:var(--gold)}
+.book-author{font-size:12.5px;color:var(--ink-3);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.book-meta{font-size:12px;color:var(--ink-3);margin-top:7px;display:flex;align-items:center;gap:7px;
+  white-space:nowrap;overflow:hidden}
+.sep{width:3px;height:3px;border-radius:50%;background:currentColor;opacity:.5;flex:none}
+.live{color:var(--blue-deep);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:5px}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--blue);flex:none;
+  animation:pulse 1.9s var(--ease-out) infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.32;transform:scale(.72)}}
+
+/* ---------- progress bar ---------- */
+.pbar{
+  position:relative;height:5px;border-radius:99px;background:var(--paper-sunk);
+  overflow:hidden;margin-top:9px;
+}
+.pbar i{
+  position:absolute;left:0;top:0;bottom:0;border-radius:99px;
+  background:linear-gradient(90deg,var(--blue-mid),var(--blue));
+  width:0;transition:width .55s var(--ease);
+}
+.book.done .pbar i{background:linear-gradient(90deg,#E2C57F,var(--gold))}
+.pbar.lg{height:9px;margin-top:0}
+
+/* ---------- empty state ---------- */
+.empty{
+  text-align:center;padding:52px 22px 30px;color:var(--ink-3);
+}
+.empty .em-mark{width:54px;margin:0 auto 18px;color:var(--blue-soft)}
+.empty .em-mark svg{width:100%;height:auto;display:block}
+.empty h3{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--ink-2);margin:0 0 6px}
+.empty p{font-size:14px;margin:0;line-height:1.5;max-width:270px;margin-inline:auto}
+
+/* ---------- floating add button ---------- */
+.fab{
+  position:absolute;right:max(20px,var(--sar));bottom:calc(24px + var(--sab));
+  width:58px;height:58px;border-radius:20px;display:grid;place-items:center;
+  background:var(--blue);color:#fff;z-index:6;
+  box-shadow:0 6px 20px rgba(91,147,199,.38),0 2px 5px rgba(32,48,60,.14);
+  transition:transform .16s var(--ease-out),box-shadow .2s ease;
+}
+.fab:active{transform:scale(.9);box-shadow:0 3px 10px rgba(91,147,199,.3)}
+
+/* ==========================================================================
+   Book view
+   ========================================================================== */
+.book-hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:4px 0 22px}
+.book-hero .cover{margin-bottom:16px}
+.book-hero h1{
+  font-family:var(--serif);font-size:25px;line-height:1.2;font-weight:600;
+  letter-spacing:-.015em;margin:0;text-wrap:balance;max-width:19ch;
+}
+.book-hero .who{font-size:13.5px;color:var(--ink-3);margin-top:5px}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;margin-top:11px;
+  padding:4px 11px 4px 8px;border-radius:99px;
+  background:color-mix(in srgb,var(--gold) 13%,transparent);color:var(--gold);
+  font-size:12px;font-weight:600;letter-spacing:.01em;
+}
+
+.card{
+  background:var(--card);border-radius:var(--r-xl);padding:18px;
+  box-shadow:0 1px 0 rgba(32,48,60,.045),0 1px 3px rgba(32,48,60,.05);
+  margin-bottom:14px;
+}
+.card-h{
+  font-size:12px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 14px;
+}
+
+.prog-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+.prog-pct{
+  font-size:38px;font-weight:600;letter-spacing:-.03em;color:var(--blue-deep);
+  font-variant-numeric:tabular-nums;line-height:1;
+}
+.prog-pct small{font-size:19px;font-weight:600;margin-left:2px}
+.done .prog-pct{color:var(--gold)}
+.prog-left{font-size:13px;color:var(--ink-3);text-align:right}
+
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.tile{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:12px 14px;border-radius:var(--r-md);background:var(--paper-sunk);
+  transition:background .18s ease,transform .12s var(--ease-out);
+}
+.tile:active{background:var(--blue-soft);transform:scale(.97)}
+.tile span{font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+.tile b{font-size:22px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.tile b.muted{color:var(--ink-3);font-weight:500}
+
+/* ---------- timer ---------- */
+.clock{
+  font-family:var(--mono);font-size:44px;font-weight:500;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;text-align:center;line-height:1.1;
+  color:var(--ink);margin:2px 0 4px;
+  transition:color .3s ease;
+}
+.clock.on{color:var(--blue-deep)}
+.timer-sub{text-align:center;font-size:12.5px;color:var(--ink-3);margin-bottom:16px}
+.btn-timer{
+  width:100%;height:52px;border-radius:var(--r-lg);
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  background:var(--blue);color:#fff;font-size:16px;font-weight:600;letter-spacing:-.01em;
+  box-shadow:0 4px 14px rgba(91,147,199,.3);
+  transition:transform .12s var(--ease-out),background .2s ease,box-shadow .2s ease;
+}
+.btn-timer:active{transform:scale(.975)}
+.btn-timer.on{background:var(--ink);box-shadow:0 4px 14px rgba(32,48,60,.24)}
+
+/* ---------- notes ---------- */
+.sec-h{
+  display:flex;align-items:center;justify-content:space-between;
+  margin:26px 2px 12px;
+}
+.sec-h h2{font-family:var(--serif);font-size:19px;font-weight:600;letter-spacing:-.01em;margin:0}
+.add-btn{
+  display:flex;align-items:center;gap:5px;padding:6px 12px 6px 9px;border-radius:99px;
+  background:var(--blue-tint);color:var(--blue-deep);font-size:13.5px;font-weight:600;
+  transition:background .18s ease,transform .12s var(--ease-out);
+}
+.add-btn:active{background:var(--blue-soft);transform:scale(.95)}
+
+.note{
+  display:block;width:100%;text-align:left;padding:14px 15px;border-radius:var(--r-lg);
+  background:var(--card);
+  box-shadow:0 1px 0 rgba(32,48,60,.045),0 1px 3px rgba(32,48,60,.05);
+  transition:transform .16s var(--ease-out);
+}
+.note:active{transform:scale(.985)}
+.note-text{
+  font-family:var(--serif);font-size:15.5px;line-height:1.5;color:var(--ink);
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.note-text.ph{color:var(--ink-3);font-style:italic}
+.note-thumbs{display:flex;gap:6px;margin-top:10px}
+.note-thumbs .th{
+  width:52px;height:52px;border-radius:8px;overflow:hidden;background:var(--paper-sunk);flex:none;
+}
+.note-thumbs .th img{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s ease}
+.note-thumbs .th img.ready{opacity:1}
+.note-thumbs .more{
+  width:52px;height:52px;border-radius:8px;display:grid;place-items:center;flex:none;
+  background:var(--paper-sunk);color:var(--ink-3);font-size:13px;font-weight:600;
+}
+.note-date{font-size:11.5px;color:var(--ink-3);margin-top:10px;letter-spacing:.01em}
+
+/* ---------- note editor ---------- */
+.editor{
+  padding:6px max(var(--gut),var(--sal)) calc(24px + var(--sab) + var(--kb)) max(var(--gut),var(--sar));
+  max-width:760px;margin:0 auto;
+}
+.note-area{
+  width:100%;border:0;background:none;resize:none;display:block;
+  font-family:var(--serif);font-size:17.5px;line-height:1.62;color:var(--ink);
+  padding:6px 0 4px;min-height:130px;
+  user-select:text;-webkit-user-select:text;
+}
+.note-area::placeholder{color:var(--ink-3);font-style:italic}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;margin-top:18px}
+.shot{
+  position:relative;aspect-ratio:3/4;border-radius:var(--r-md);overflow:hidden;
+  background:var(--paper-sunk);
+  transition:transform .14s var(--ease-out);
+}
+.shot:active{transform:scale(.97)}
+.shot img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s ease}
+.shot img.ready{opacity:1}
+.editor-bar{
+  flex:none;display:flex;gap:8px;align-items:center;
+  padding:10px max(var(--gut),var(--sal)) calc(10px + var(--sab)) max(var(--gut),var(--sar));
+  border-top:1px solid var(--edge-soft);
+  background:color-mix(in srgb,var(--paper) 88%,transparent);
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  transform:translateY(calc(-1 * var(--kb)));
+  transition:transform .22s var(--ease);
+}
+.editor-bar button{
+  display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:14px;
+  background:var(--paper-sunk);color:var(--ink-2);font-size:14.5px;font-weight:550;
+  transition:background .18s ease,transform .12s var(--ease-out);
+}
+.editor-bar button:active{background:var(--blue-soft);transform:scale(.96)}
+
+/* ==========================================================================
+   Sheets, menus, forms
+   ========================================================================== */
+.scrim{
+  position:fixed;inset:0;z-index:40;background:rgba(32,48,60,.34);
+  opacity:0;transition:opacity .34s var(--ease);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+}
+.scrim.in{opacity:1}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:41;
+  background:var(--paper);
+  border-radius:26px 26px 0 0;
+  box-shadow:0 -8px 40px rgba(32,48,60,.18);
+  transform:translateY(101%);
+  transition:transform .42s var(--ease);
+  max-height:92vh;display:flex;flex-direction:column;
+  padding-bottom:calc(14px + var(--sab));
+  max-width:560px;margin:0 auto;
+}
+.sheet.in{transform:none}
+.grab{padding:9px 0 3px;display:grid;place-items:center;flex:none;cursor:grab;touch-action:none}
+.grab i{width:38px;height:5px;border-radius:99px;background:var(--edge);display:block}
+.sheet-head{
+  flex:none;text-align:center;font-size:16.5px;font-weight:650;letter-spacing:-.01em;
+  padding:6px 20px 12px;touch-action:none;
+}
+.sheet-body{overflow-y:auto;padding:0 16px;-webkit-overflow-scrolling:touch}
+.sheet-note{font-size:13.5px;color:var(--ink-2);line-height:1.5;margin:2px 4px 16px;text-align:center}
+
+.menu{display:flex;flex-direction:column;gap:1px;padding-bottom:6px}
+.menu-item{
+  display:flex;align-items:center;gap:13px;padding:13px 12px;border-radius:14px;
+  color:var(--ink);text-align:left;
+  transition:background .16s ease;
+}
+.menu-item:active{background:var(--paper-sunk)}
+.menu-item svg{color:var(--blue-deep)}
+.menu-item.danger{color:var(--clay)}
+.menu-item.danger svg{color:var(--clay)}
+.mi-main{flex:1;min-width:0;font-size:16px;letter-spacing:-.01em}
+.mi-sub{font-size:12.5px;color:var(--ink-3);margin-top:1px}
+.mi-val{font-size:14.5px;color:var(--ink-3);flex:none}
+.menu-sep{height:1px;background:var(--edge-soft);margin:6px 12px}
+
+.field{display:block;margin:0 2px 14px}
+.field>span{display:block;font-size:12px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 2px 6px}
+.field input,.field textarea{
+  width:100%;border:1px solid var(--edge);background:var(--card);
+  border-radius:14px;padding:12px 14px;font-size:16px;
+  user-select:text;-webkit-user-select:text;
+  transition:border-color .18s ease,background .18s ease;
+}
+.field textarea{min-height:96px;resize:none;line-height:1.5}
+.field input:focus,.field textarea:focus{border-color:var(--blue-mid);background:#fff}
+.btn-row{display:flex;gap:10px;padding:6px 2px 4px}
+.btn{
+  flex:1;height:50px;border-radius:16px;display:grid;place-items:center;
+  font-size:16px;font-weight:600;letter-spacing:-.01em;
+  transition:transform .12s var(--ease-out),background .18s ease;
+}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--blue);color:#fff}
+.btn.ghost{background:var(--paper-sunk);color:var(--ink-2)}
+.btn.danger{background:var(--clay);color:#fff}
+
+/* ---------- book form ---------- */
+.bf-top{display:flex;gap:14px;margin:2px 2px 4px}
+.bf-cover{flex:none;position:relative}
+.bf-cover .cover{width:88px;height:128px}
+.bf-cover .cam{
+  position:absolute;right:-5px;bottom:-5px;width:30px;height:30px;border-radius:11px;
+  background:var(--blue);color:#fff;display:grid;place-items:center;
+  box-shadow:0 2px 8px rgba(32,48,60,.2);
+}
+.bf-fields{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.bf-fields .field{margin-bottom:10px}
+.bf-fields .field:last-child{margin-bottom:0}
+
+/* ---------- numeric keypad ---------- */
+.kp-val{
+  text-align:center;font-size:52px;font-weight:600;letter-spacing:-.03em;line-height:1.1;
+  font-variant-numeric:tabular-nums;margin:2px 0 2px;min-height:58px;color:var(--ink);
+}
+.kp-val.zero{color:var(--ink-3)}
+.kp-hint{text-align:center;font-size:13.5px;color:var(--ink-3);margin-bottom:16px;min-height:20px}
+.kp-hint b{color:var(--blue-deep);font-weight:650}
+.kp-bar{height:9px;border-radius:99px;background:var(--paper-sunk);overflow:hidden;margin:0 4px 18px}
+.kp-bar i{display:block;height:100%;border-radius:99px;width:0;
+  background:linear-gradient(90deg,var(--blue-mid),var(--blue));transition:width .3s var(--ease)}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;padding-bottom:4px}
+.key{
+  height:56px;border-radius:16px;display:grid;place-items:center;
+  background:var(--card);border:1px solid var(--edge-soft);
+  font-size:24px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;
+  transition:background .12s ease,transform .1s var(--ease-out);
+}
+.key:active{background:var(--blue-soft);transform:scale(.94)}
+.key.util{background:var(--paper-sunk);border-color:transparent;color:var(--ink-2)}
+.key.ok{background:var(--blue);border-color:transparent;color:#fff}
+.kp-quick{display:flex;gap:8px;justify-content:center;margin:14px 0 2px;flex-wrap:wrap}
+.kp-quick button{
+  padding:8px 14px;border-radius:99px;background:var(--paper-sunk);color:var(--ink-2);
+  font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;
+  transition:background .16s ease,transform .12s var(--ease-out);
+}
+.kp-quick button:active{background:var(--blue-soft);transform:scale(.94)}
+
+/* ---------- toast ---------- */
+#toast{
+  position:fixed;left:50%;bottom:calc(30px + var(--sab));z-index:60;
+  transform:translate(-50%,26px);opacity:0;pointer-events:none;
+  display:flex;align-items:center;gap:14px;
+  background:var(--ink);color:#F6F9FB;
+  padding:12px 16px;border-radius:16px;font-size:14.5px;
+  box-shadow:0 8px 28px rgba(32,48,60,.28);
+  transition:opacity .28s var(--ease),transform .28s var(--ease);
+  max-width:min(440px,calc(100vw - 34px));
+}
+#toast.in{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#toast button{color:var(--blue-mid);font-weight:650;flex:none}
+
+/* ---------- photo viewer ---------- */
+.viewer{
+  position:fixed;inset:0;z-index:70;display:none;place-items:center;
+  background:rgba(24,32,40,.97);opacity:0;transition:opacity .3s ease;
+  touch-action:none;
+}
+.viewer.up{display:grid}
+.viewer.in{opacity:1}
+.viewer img{
+  max-width:100vw;max-height:100vh;object-fit:contain;display:block;
+  will-change:transform;user-select:none;-webkit-user-drag:none;
+}
+.v-close,.v-del{
+  position:absolute;top:calc(12px + var(--sat));width:42px;height:42px;border-radius:14px;
+  display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.14);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+}
+.v-close{left:calc(12px + var(--sal))}
+.v-del{right:calc(12px + var(--sar))}
+.v-close:active,.v-del:active{background:rgba(255,255,255,.26)}
+
+/* ---------- install hint ---------- */
+.hint{
+  margin:18px 0 4px;padding:14px 16px;border-radius:var(--r-lg);
+  background:var(--blue-tint);color:var(--ink-2);font-size:13.5px;line-height:1.5;
+  display:flex;gap:12px;align-items:flex-start;
+}
+.hint b{color:var(--ink);font-weight:650}
+.hint button{flex:none;color:var(--blue-deep);font-weight:650;font-size:13.5px;margin-top:-1px}
+</style>
+</head>
+<body>
+
+<div id="stack"></div>
+<div id="toast"></div>
+<div class="viewer" id="viewer">
+  <img id="vimg" alt="">
+  <button class="v-close" id="vclose" aria-label="Close"></button>
+  <button class="v-del" id="vdel" aria-label="Delete"></button>
+</div>
+
+<script>
+'use strict';
+/* ==========================================================================
+   Bookresio — a reading log that never leaves the phone.
+   One HTML file. Books, notes and photos live in IndexedDB; nothing is sent
+   anywhere. Layout follows a simple stack of full-screen views, with sheets
+   on top, and every dismissal travels through history so the iOS back
+   gesture, the hardware back button and the in-app buttons agree.
+   ========================================================================== */
+
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+function frag(html){ const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content; }
+function node(html){ return frag(html).firstElementChild; }
+
+/* ------------------------------------------------------------------ icons */
+const GLYPH = {
+  back:'<path d="M15 5.5 8 12l7 6.5"/>',
+  plus:'<path d="M12 5.4v13.2M5.4 12h13.2"/>',
+  more:'<circle cx="6" cy="12" r="1.45" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.45" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.45" fill="currentColor" stroke="none"/>',
+  gear:'<circle cx="12" cy="12" r="3.2"/><path d="M12 3.4v2.2M12 18.4v2.2M20.6 12h-2.2M5.6 12H3.4M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6M18.1 18.1l-1.6-1.6M7.5 7.5 5.9 5.9"/>',
+  sort:'<path d="M4.5 6.6h15M4.5 12h10M4.5 17.4h5.5"/>',
+  play:'<path d="M8.4 5.6 18.6 12 8.4 18.4z" fill="currentColor" stroke-linejoin="round"/>',
+  stop:'<rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2.2" fill="currentColor" stroke="none"/>',
+  camera:'<path d="M3.4 8.6a2 2 0 0 1 2-2h1.9l1.1-1.9h7.2l1.1 1.9h1.9a2 2 0 0 1 2 2v8.8a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.6" r="3.5"/>',
+  image:'<rect x="3.4" y="5.4" width="17.2" height="13.2" rx="2.4"/><circle cx="9" cy="10" r="1.5"/><path d="M4.2 16.6 9 12l3.6 3.4 3-2.6 4.2 3.8"/>',
+  note:'<path d="M6.5 3.8h6.8L18 8.6v11.6H6.5z"/><path d="M13.1 3.8v5h4.7"/><path d="M9.4 12.4h5.4M9.4 15.8h3.6"/>',
+  book:'<path d="M4.2 5.2A2 2 0 0 1 6.2 3.4h13.4v14.2H6.2a2 2 0 0 0-2 2z"/><path d="M4.2 19.6a2 2 0 0 1 2-2h13.4v3H6.2a2 2 0 0 1-2-1z"/>',
+  trash:'<path d="M4.8 6.9h14.4M9.6 6.9V5.2a1 1 0 0 1 1-1h2.8a1 1 0 0 1 1 1v1.7"/><path d="M6.8 6.9 7.7 19a1 1 0 0 0 1 .9h6.6a1 1 0 0 0 1-.9l.9-12.1"/>',
+  pencil:'<path d="M4 20.1l.9-4.1L16.4 4.5a2.1 2.1 0 0 1 3 3L7.9 19.1 4 20.1z"/><path d="M14.4 6.5l3 3"/>',
+  close:'<path d="M6.4 6.4 17.6 17.6M17.6 6.4 6.4 17.6"/>',
+  check:'<path d="M5.2 12.6 9.8 17.2 18.8 6.8"/>',
+  flag:'<path d="M6 20.6V4.4h11.4l-2 3.6 2 3.6H6"/>',
+  undo:'<path d="M4.6 9.4h9.8a4.8 4.8 0 0 1 0 9.6H8.2"/><path d="M8.2 5 4.4 9.4l3.8 4.2"/>',
+  back10:'<path d="M4.6 9.4h9.8a4.8 4.8 0 0 1 0 9.6H8.2"/><path d="M8.2 5 4.4 9.4l3.8 4.2"/>',
+  globe:'<circle cx="12" cy="12" r="8.4"/><path d="M3.6 12h16.8"/><path d="M12 3.6c2.2 2.3 3.3 5.2 3.3 8.4S14.2 18.1 12 20.4c-2.2-2.3-3.3-5.2-3.3-8.4S9.8 5.9 12 3.6z"/>',
+  down:'<path d="M12 4.2v11.4M7.6 11.2 12 15.6l4.4-4.4"/><path d="M4.6 19.8h14.8"/>',
+  up:'<path d="M12 15.6V4.2M7.6 8.6 12 4.2l4.4 4.4"/><path d="M4.6 19.8h14.8"/>',
+  broom:'<path d="M14.5 3.5 9 9"/><path d="M6.6 11.4 12.6 5.4a2.6 2.6 0 0 1 3.7 0l2.3 2.3a2.6 2.6 0 0 1 0 3.7l-6 6z"/><path d="M6.6 11.4 3.5 20.5l9.1-3.1"/>',
+  info:'<circle cx="12" cy="12" r="8.4"/><path d="M12 11v5.4"/><circle cx="12" cy="7.9" r="1.05" fill="currentColor" stroke="none"/>',
+  clock:'<circle cx="12" cy="12" r="8.4"/><path d="M12 7.2V12l3.2 2"/>',
+  del:'<path d="M9.4 6.6h8.4a2 2 0 0 1 2 2v6.8a2 2 0 0 1-2 2H9.4L3.8 12z"/><path d="M12.6 10.2 16.4 14M16.4 10.2 12.6 14"/>',
+};
+function icon(name, size = 22){
+  return '<svg class="i" viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ' +
+    'aria-hidden="true">' + (GLYPH[name] || '') + '</svg>';
+}
+/* Drawn as geometry in tools/gen-icons.mjs, so the mark on screen and the mark
+   on the home screen are the same letter. */
+const LOGO_PATH = 'M21.8 17 H53.8 A22 15.4 0 0 1 75.8 32.4 A22 15.4 0 0 1 53.8 47.8 A24.4 17.6 0 0 1 78.2 65.4 A24.4 17.6 0 0 1 53.8 83 H21.8 V78.8 H24.3 A5.5 5.5 0 0 0 29.8 73.3 V26.7 A5.5 5.5 0 0 0 24.3 21.2 H21.8 Z M41.8 32.4 A12 11.2 0 1 1 65.8 32.4 A12 11.2 0 1 1 41.8 32.4 Z M41.8 65.4 A12 13.4 0 1 1 65.8 65.4 A12 13.4 0 1 1 41.8 65.4 Z';
+const logoMark = () =>
+  '<svg viewBox="0 0 100 100" aria-hidden="true"><path fill-rule="evenodd" d="' + LOGO_PATH + '" fill="currentColor"/></svg>';
+
+/* --------------------------------------------------------------- language */
+const STRINGS = {
+  en: {
+    shelf:'Bookresio', untitled:'Untitled',
+    booksN:n => n === 1 ? '1 book' : n + ' books',
+    shelfSub:(n, time) => n ? STRINGS.en.booksN(n) + ' · ' + time + ' read' : 'Your shelf',
+    emptyT:'Nothing on the shelf yet',
+    emptyB:'Tap + to add the book you are reading. Cover, pages and time all live on this phone.',
+    addBook:'Add a book', editBook:'Edit book',
+    title:'Title', author:'Author', titlePh:'Crime and Punishment', authorPh:'Fyodor Dostoevsky',
+    cover:'Cover', pickCover:'Choose cover', removeCover:'Remove cover',
+    totalPages:'Total pages', pagesRead:'Pages read', pages:'pages',
+    pagesOf:(a, b) => a + ' / ' + b + ' pages',
+    noPages:'Set the page count',
+    left:n => n + ' left', finishedC:'Finished',
+    progress:'Progress', timer:'Reading timer', notes:'Notes',
+    start:'Start reading', stop:'Stop', running:'Reading now',
+    totalTime:'total', pace:n => '≈ ' + n + ' pages an hour', noPace:'no pace yet',
+    sessionAdded:m => m + ' added', updatePages:'Update pages',
+    sortBy:'Sort by', sRecent:'Recently read', sTitle:'Title', sProgress:'Progress', sAdded:'Newly added',
+    markFinished:'Mark as finished', markUnfinished:'Back to reading',
+    delete:'Delete', deleteBook:'Delete book', edit:'Edit details',
+    deleteBookQ:name => 'Delete “' + name + '”?',
+    deleteBookNote:'The cover, the notes, the time and the pages all go with it.',
+    deleteNoteQ:'Delete this note?', deleteNoteNote:'The text and the photos go with it.',
+    deletePhotoQ:'Delete this photo?',
+    cancel:'Cancel', save:'Save', done:'Done', close:'Close', add:'Add',
+    newNote:'New note', notePh:'Anything worth keeping — a line, a thought, a page you want back.',
+    noNotesT:'No notes yet', noNotesB:'Jot a thought, or snap a page you want to keep.',
+    addPhoto:'Photo', notesN:n => n === 1 ? '1 note' : n + ' notes',
+    settings:'Settings', language:'Language', exportB:'Export backup', importB:'Restore backup',
+    cleanup:'Remove unused photos', about:'About Bookresio',
+    cleanupDone:n => n ? 'Freed ' + n + ' unused photo' + (n === 1 ? '' : 's') : 'Nothing to clean up',
+    restoreQ:'Replace everything with this backup?',
+    restoreNote:'The books on this device will be removed and replaced by the contents of the file.',
+    restore:'Restore', restored:'Backup restored', badFile:'That file is not a Bookresio backup',
+    exported:'Backup saved',
+    aboutBody:'Bookresio keeps everything on this device only — no account, no server, nothing uploaded. Export a backup now and then, especially before clearing Safari data.',
+    hintT:'<b>Add Bookresio to your Home Screen</b> — Share → Add to Home Screen. It then opens full screen and works offline.',
+    got:'Got it',
+    deleted:'Deleted', undo:'Undo', finishedToast:'Finished — nice one.',
+    stoppedOther:name => 'Timer stopped for “' + name + '”',
+    timerDropped:'A timer left running was dropped',
+    justNow:'just now',
+    hShort:'h', mShort:'m', sShort:'s',
+    ofTotal:(n) => 'of ' + n,
+    pctRead:p => p + '% read',
+  },
+  pl: {
+    shelf:'Bookresio', untitled:'Bez tytułu',
+    booksN:n => n === 1 ? '1 książka'
+      : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? n + ' książki' : n + ' książek',
+    shelfSub:(n, time) => n ? STRINGS.pl.booksN(n) + ' · ' + time + ' czytania' : 'Twoja półka',
+    emptyT:'Półka jest jeszcze pusta',
+    emptyB:'Stuknij +, żeby dodać książkę, którą czytasz. Okładka, strony i czas zostają na tym telefonie.',
+    addBook:'Dodaj książkę', editBook:'Edytuj książkę',
+    title:'Tytuł', author:'Autor', titlePh:'Zbrodnia i kara', authorPh:'Fiodor Dostojewski',
+    cover:'Okładka', pickCover:'Wybierz okładkę', removeCover:'Usuń okładkę',
+    totalPages:'Liczba stron', pagesRead:'Przeczytane', pages:'stron',
+    pagesOf:(a, b) => a + ' / ' + b + ' stron',
+    noPages:'Podaj liczbę stron',
+    left:n => 'zostało ' + n, finishedC:'Przeczytana',
+    progress:'Postęp', timer:'Stoper czytania', notes:'Notatki',
+    start:'Zacznij czytać', stop:'Zatrzymaj', running:'Czytasz teraz',
+    totalTime:'łącznie', pace:n => '≈ ' + n + ' stron na godzinę', noPace:'za mało danych',
+    sessionAdded:m => 'Dopisano ' + m, updatePages:'Zmień stronę',
+    sortBy:'Kolejność', sRecent:'Ostatnio czytane', sTitle:'Tytuł', sProgress:'Postęp', sAdded:'Ostatnio dodane',
+    markFinished:'Oznacz jako przeczytaną', markUnfinished:'Wróć do czytania',
+    delete:'Usuń', deleteBook:'Usuń książkę', edit:'Edytuj dane',
+    deleteBookQ:name => 'Usunąć „' + name + '”?',
+    deleteBookNote:'Znikną razem z nią okładka, notatki, czas i strony.',
+    deleteNoteQ:'Usunąć tę notatkę?', deleteNoteNote:'Tekst i zdjęcia znikną razem z nią.',
+    deletePhotoQ:'Usunąć to zdjęcie?',
+    cancel:'Anuluj', save:'Zapisz', done:'Gotowe', close:'Zamknij', add:'Dodaj',
+    newNote:'Nowa notatka', notePh:'Cokolwiek warto zatrzymać — zdanie, myśl, strona, do której chcesz wrócić.',
+    noNotesT:'Jeszcze nic tu nie ma', noNotesB:'Zapisz myśl albo zrób zdjęcie strony, którą chcesz zachować.',
+    addPhoto:'Zdjęcie', notesN:n => n === 1 ? '1 notatka'
+      : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? n + ' notatki' : n + ' notatek',
+    settings:'Ustawienia', language:'Język', exportB:'Zapisz kopię', importB:'Wczytaj kopię',
+    cleanup:'Usuń nieużywane zdjęcia', about:'O aplikacji',
+    cleanupDone:n => n ? 'Zwolniono nieużywane zdjęcia: ' + n : 'Nie ma czego czyścić',
+    restoreQ:'Zastąpić wszystko tą kopią?',
+    restoreNote:'Książki na tym urządzeniu zostaną usunięte i zastąpione zawartością pliku.',
+    restore:'Wczytaj', restored:'Wczytano kopię', badFile:'To nie jest kopia z Bookresio',
+    exported:'Zapisano kopię',
+    aboutBody:'Bookresio trzyma wszystko wyłącznie na tym urządzeniu — bez konta, bez serwera, nic nie jest wysyłane. Warto co jakiś czas zapisać kopię, zwłaszcza przed czyszczeniem danych Safari.',
+    hintT:'<b>Dodaj Bookresio do ekranu początkowego</b> — Udostępnij → Do ekranu początkowego. Wtedy działa pełnoekranowo i offline.',
+    got:'Jasne',
+    deleted:'Usunięto', undo:'Cofnij', finishedToast:'Przeczytana — gratulacje.',
+    stoppedOther:name => 'Zatrzymano stoper „' + name + '”',
+    timerDropped:'Odrzucono zapomniany stoper',
+    justNow:'przed chwilą',
+    hShort:'godz.', mShort:'min', sShort:'sek.',
+    ofTotal:(n) => 'z ' + n,
+    pctRead:p => 'przeczytane ' + p + '%',
+  },
+};
+let LANG = localStorage.getItem('bookresio.lang') || (navigator.language || 'en').slice(0, 2).toLowerCase();
+if (!STRINGS[LANG]) LANG = 'en';
+const t = (k, ...a) => { const v = STRINGS[LANG][k]; return typeof v === 'function' ? v(...a) : v; };
+
+/* ------------------------------------------------------------- formatting */
+/* 3 h 12 m — the long form, for totals. */
+function fmtHM(sec){
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
+  if (h) return h + ' ' + t('hShort') + ' ' + m + ' ' + t('mShort');
+  if (m) return m + ' ' + t('mShort');
+  return sec + ' ' + t('sShort');
+}
+/* 00:24:13 — the ticking form, for the timer. */
+function fmtClock(sec){
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  const p = n => String(n).padStart(2, '0');
+  return p(h) + ':' + p(m) + ':' + p(s);
+}
+function relTime(ts){
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return t('justNow');
+  const rtf = new Intl.RelativeTimeFormat(LANG, { numeric:'auto' });
+  const m = Math.round(s / 60);   if (m < 60) return rtf.format(-m, 'minute');
+  const h = Math.round(m / 60);   if (h < 24) return rtf.format(-h, 'hour');
+  const d = Math.round(h / 24);   if (d < 7)  return rtf.format(-d, 'day');
+  return new Intl.DateTimeFormat(LANG, { day:'numeric', month:'short',
+    year: new Date(ts).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }).format(ts);
+}
+
+/* ------------------------------------------------------------------- data */
+const DB_NAME = 'bookresio', DB_VER = 1;
+let db = null;
+
+function openDB(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains('books'))  d.createObjectStore('books',  { keyPath:'id' });
+      if (!d.objectStoreNames.contains('notes'))  d.createObjectStore('notes',  { keyPath:'id' });
+      if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath:'id' });
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+function idb(store, mode, fn){
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, mode);
+    const rq = fn(tx.objectStore(store));
+    tx.oncomplete = () => res(rq && 'result' in rq ? rq.result : undefined);
+    tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error);
+  });
+}
+const dbAll  = s => idb(s, 'readonly',  st => st.getAll());
+const dbGet  = (s, k) => idb(s, 'readonly',  st => st.get(k));
+const dbPut  = (s, v) => idb(s, 'readwrite', st => st.put(v));
+const dbDel  = (s, k) => idb(s, 'readwrite', st => st.delete(k));
+const dbKeys = s => idb(s, 'readonly',  st => st.getAllKeys());
+
+const books = new Map();   // id -> book
+const notes = new Map();   // id -> note
+
+/* Writes are coalesced: edit freely, the disk catches up a beat later. */
+const dirtyBooks = new Set(), dirtyNotes = new Set();
+let flushTimer = null;
+function touchBook(b, stamp = true){
+  if (stamp) b.updatedAt = Date.now();
+  dirtyBooks.add(b.id);
+  clearTimeout(flushTimer); flushTimer = setTimeout(flush, 320);
+}
+function touchNote(n, stamp = true){
+  if (stamp) n.updatedAt = Date.now();
+  dirtyNotes.add(n.id);
+  clearTimeout(flushTimer); flushTimer = setTimeout(flush, 320);
+}
+async function flush(){
+  clearTimeout(flushTimer); flushTimer = null;
+  if (dirtyBooks.size){
+    const ids = [...dirtyBooks]; dirtyBooks.clear();
+    await idb('books', 'readwrite', st => { for (const id of ids){ const b = books.get(id); if (b) st.put(b); } });
+  }
+  if (dirtyNotes.size){
+    const ids = [...dirtyNotes]; dirtyNotes.clear();
+    await idb('notes', 'readwrite', st => { for (const id of ids){ const n = notes.get(id); if (n) st.put(n); } });
+  }
+}
+addEventListener('pagehide', () => { flush(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+
+function makeBook(){
+  const now = Date.now();
+  return { id:uid(), title:'', author:'', coverId:null, pages:0, read:0,
+           seconds:0, runningSince:null, lastReadAt:null, finishedAt:null,
+           createdAt:now, updatedAt:now };
+}
+function makeNote(bookId){
+  const now = Date.now();
+  return { id:uid(), bookId, text:'', images:[], createdAt:now, updatedAt:now };
+}
+const notesOf = id => [...notes.values()].filter(n => n.bookId === id)
+  .sort((a, b) => b.createdAt - a.createdAt);
+
+/* ---------------------------------------------------------------- reading */
+const pctOf = b => !b.pages ? 0 : clamp(Math.round(b.read / b.pages * 100), 0, 100);
+const isDone = b => !!b.finishedAt || (b.pages > 0 && b.read >= b.pages);
+/* Seconds on the clock right now, running timer included. */
+const elapsedOf = b => b.seconds + (b.runningSince ? (Date.now() - b.runningSince) / 1000 : 0);
+
+function startTimer(b){
+  for (const o of books.values()){
+    if (o !== b && o.runningSince){ stopTimer(o); toast(t('stoppedOther', o.title || t('untitled'))); }
+  }
+  b.runningSince = Date.now();
+  b.lastReadAt = Date.now();
+  touchBook(b); flush();
+}
+function stopTimer(b){
+  if (!b.runningSince) return 0;
+  const ran = Math.max(0, (Date.now() - b.runningSince) / 1000);   // clock changes
+  b.seconds += ran;
+  b.runningSince = null;
+  b.lastReadAt = Date.now();
+  touchBook(b); flush();
+  return ran;
+}
+const anyRunning = () => [...books.values()].some(b => b.runningSince);
+
+/* A timer left running overnight is a forgotten timer, not six hours of
+   reading. Rather than quietly inflating the total we drop that session and
+   say so — the phone suspends the app, so this is checked on the way back. */
+const MAX_SESSION = 6 * 3600;
+function reapStaleTimers(){
+  let n = 0;
+  for (const b of books.values()){
+    if (!b.runningSince) continue;
+    if ((Date.now() - b.runningSince) / 1000 <= MAX_SESSION) continue;
+    b.runningSince = null;
+    touchBook(b, false);
+    n++;
+  }
+  if (n){ flush(); refreshViews(); toast(t('timerDropped')); }
+  return n;
+}
+
+/* ----------------------------------------------------------------- photos */
+const urls = new Map(), seenAssets = new Set();
+async function assetURL(id){
+  if (urls.has(id)) return urls.get(id);
+  const a = await dbGet('assets', id);
+  if (!a) return null;
+  const u = URL.createObjectURL(a.blob);
+  urls.set(id, u);
+  return u;
+}
+/* Any <img data-asset> inside root gets its blob, once, and fades in the
+   first time only — re-renders reuse the same URL and should not flicker. */
+async function hydrate(root){
+  for (const img of $$('img[data-asset]', root)){
+    if (img.dataset.done) continue;
+    img.dataset.done = '1';
+    const u = await assetURL(img.dataset.asset);
+    if (!u) continue;
+    img.src = u;
+    if (seenAssets.has(img.dataset.asset)) img.classList.add('ready');
+    else img.addEventListener('load', () => {
+      seenAssets.add(img.dataset.asset); img.classList.add('ready');
+    }, { once:true });
+  }
+}
+const MAX_EDGE = 1900;
+async function storeImage(file, maxEdge = MAX_EDGE){
+  let w = 0, h = 0, blob = file;
+  try {
+    let bmp;
+    try { bmp = await createImageBitmap(file); }
+    catch { bmp = await new Promise((res, rej) => {
+      const u = URL.createObjectURL(file), im = new Image();
+      im.onload = () => { res(im); setTimeout(() => URL.revokeObjectURL(u), 1000); };
+      im.onerror = rej; im.src = u;
+    }); }
+    w = bmp.width || bmp.naturalWidth; h = bmp.height || bmp.naturalHeight;
+    const s = Math.min(1, maxEdge / Math.max(w, h));
+    const cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s));
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    const ctx = c.getContext('2d', { alpha:false });
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(bmp, 0, 0, cw, ch);
+    const out = await new Promise(r => c.toBlob(r, 'image/jpeg', .88));
+    if (out && out.size){ blob = out; w = cw; h = ch; }
+    bmp.close && bmp.close();
+  } catch (e){ console.warn('image import fell back to the original file', e); }
+  const id = uid();
+  await dbPut('assets', { id, blob, w, h, mime:blob.type || 'image/jpeg' });
+  return { id, w, h };
+}
+/* Nothing points at it any more → drop it. */
+async function gcAssets(){
+  const used = new Set();
+  for (const b of books.values()) if (b.coverId) used.add(b.coverId);
+  for (const n of notes.values()) for (const i of (n.images || [])) used.add(i);
+  const dead = (await dbKeys('assets')).filter(k => !used.has(k));
+  for (const k of dead){
+    await dbDel('assets', k);
+    const u = urls.get(k);
+    if (u){ URL.revokeObjectURL(u); urls.delete(k); }
+  }
+  return dead.length;
+}
+/* One shared file input: iOS offers Photo Library / Take Photo / Files. */
+function pickImages(cb, multiple = false){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = multiple;
+  inp.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+  document.body.appendChild(inp);
+  inp.addEventListener('change', () => {
+    const files = [...inp.files];
+    inp.remove();
+    if (files.length) cb(files);
+  });
+  inp.click();
+}
+
+/* ==========================================================================
+   Layers — every dismissable thing is one history entry, so the iOS back
+   swipe, the Android back button and the in-app close button take one path.
+   ========================================================================== */
+const layers = [];
+let historyOK = true;
+try { history.replaceState({ b:0 }, ''); } catch { historyOK = false; }
+
+function pushLayer(onClose){
+  const layer = { onClose, dead:false };
+  layers.push(layer);
+  if (historyOK){ try { history.pushState({ b:layers.length }, ''); } catch { historyOK = false; } }
+  return layer;
+}
+function closeLayer(layer){
+  if (!layer || layer.dead) return;
+  if (historyOK && layers[layers.length - 1] === layer){ history.back(); return; }
+  const i = layers.indexOf(layer);
+  if (i >= 0) layers.splice(i, 1);
+  layer.dead = true; layer.onClose();
+}
+addEventListener('popstate', () => {
+  const l = layers.pop();
+  if (l && !l.dead){ l.dead = true; l.onClose(); }
+});
+
+/* ------------------------------------------------------------- view stack */
+const stackEl = $('#stack');
+const views = [];
+
+function pushView(view, animate = true){
+  const prev = views[views.length - 1];
+  views.push(view);
+  stackEl.appendChild(view.el);
+  view.layer = pushLayer(() => popViewNow(view));
+  if (animate){
+    view.el.classList.add('enter');
+    view.el.getBoundingClientRect();              // flush the start state
+    view.el.classList.add('animating');
+    view.el.classList.remove('enter');
+    if (prev) prev.el.classList.add('animating', 'behind');
+    setTimeout(() => {
+      view.el.classList.remove('animating');
+      if (prev) prev.el.classList.remove('animating');
+    }, 440);
+  } else if (prev) prev.el.classList.add('behind');
+  view.mounted && view.mounted();
+}
+function popViewNow(view){
+  const i = views.indexOf(view);
+  if (i <= 0) return;                       // the shelf is never popped
+  views.splice(i, 1);
+  const prev = views[views.length - 1];
+  view.willUnmount && view.willUnmount();   // the user left: save, discard, refresh
+  view.dispose && view.dispose();           // and let go of any timers
+  view.el.classList.add('animating', 'enter');
+  if (prev){ prev.el.classList.add('animating'); prev.el.classList.remove('behind'); }
+  setTimeout(() => {
+    view.el.remove();
+    if (prev){ prev.el.classList.remove('animating'); prev.resumed && prev.resumed(); }
+  }, 440);
+}
+function goBack(){
+  const v = views[views.length - 1];
+  if (v && v.layer) closeLayer(v.layer);
+}
+function refreshViews(){ for (const v of views) v.render && v.render(); }
+
+/* Progress bars are written into the markup at width 0 and moved to their
+   real width once the start state has been flushed, which is what makes them
+   sweep across. Deliberately not requestAnimationFrame: a backgrounded tab
+   never runs those callbacks and the bars would be left sitting at zero. */
+function paintBars(root){
+  const bars = $$('.pbar i[data-pct]', root);
+  if (!bars.length) return;
+  root.getBoundingClientRect();
+  for (const b of bars) b.style.width = b.dataset.pct + '%';
+}
+
+/* A bar that reveals its title once the big one has scrolled away. */
+function wireBar(view){
+  const bar = $('.bar', view.el), sc = $('.scroll', view.el);
+  if (!bar || !sc) return;
+  sc.addEventListener('scroll', () => bar.classList.toggle('scrolled', sc.scrollTop > 26), { passive:true });
+}
+
+/* ==========================================================================
+   Sheets
+   ========================================================================== */
+function openSheet({ title = '', build }){
+  const scrim = node('<div class="scrim"></div>');
+  const sheet = node('<div class="sheet" role="dialog" aria-modal="true">' +
+      '<div class="grab"><i></i></div>' +
+      (title ? '<div class="sheet-head">' + esc(title) + '</div>' : '') +
+      '<div class="sheet-body"></div>' +
+    '</div>');
+  document.body.append(scrim, sheet);
+  const body = $('.sheet-body', sheet);
+  let finished = false;
+  function finish(){
+    if (finished) return; finished = true;
+    sheet.style.transition = ''; sheet.classList.remove('in'); scrim.classList.remove('in');
+    setTimeout(() => { sheet.remove(); scrim.remove(); }, 420);
+  }
+  const layer = pushLayer(finish);
+  const api = { el:sheet, body, close(){ closeLayer(layer); } };
+  build(body, api);
+  sheet.getBoundingClientRect();                  // flush the start state
+  scrim.classList.add('in'); sheet.classList.add('in');
+  scrim.addEventListener('click', () => api.close());
+
+  /* drag the top of the sheet down to dismiss */
+  let sy = 0, dy = 0, t0 = 0, on = false;
+  const zone = [$('.grab', sheet), $('.sheet-head', sheet)].filter(Boolean);
+  const H = () => sheet.getBoundingClientRect().height;
+  const down = e => {
+    on = true; sy = e.clientY; dy = 0; t0 = performance.now();
+    sheet.style.transition = 'none';
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+    addEventListener('pointercancel', up);
+  };
+  const move = e => {
+    if (!on) return;
+    dy = e.clientY - sy;
+    const v = dy < 0 ? -Math.pow(-dy, .72) : dy;      // resistance upward
+    sheet.style.transform = 'translateY(' + v + 'px)';
+    scrim.style.opacity = String(clamp(1 - Math.max(0, dy) / H(), 0, 1));
+  };
+  const up = () => {
+    if (!on) return; on = false;
+    removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+    removeEventListener('pointercancel', up);
+    const v = dy / Math.max(1, performance.now() - t0);
+    sheet.style.transition = 'transform .34s var(--ease)';
+    scrim.style.opacity = '';
+    sheet.style.transform = '';
+    if (dy > Math.min(H() * .28, 150) || v > .5) api.close();
+  };
+  zone.forEach(z => z.addEventListener('pointerdown', down));
+  return api;
+}
+
+function openMenu(title, items){
+  return openSheet({ title, build(body, api){
+    const wrap = node('<div class="menu"></div>');
+    for (const it of items){
+      if (it === '-'){ wrap.appendChild(node('<div class="menu-sep"></div>')); continue; }
+      const b = node('<button class="menu-item' + (it.danger ? ' danger' : '') + '">' +
+        icon(it.icon || 'info') +
+        '<span class="mi-main"><span>' + esc(it.label) + '</span>' +
+          (it.sub ? '<div class="mi-sub">' + esc(it.sub) + '</div>' : '') + '</span>' +
+        (it.value ? '<span class="mi-val">' + esc(it.value) + '</span>' : '') +
+        (it.checked ? icon('check', 20) : '') +
+      '</button>');
+      b.addEventListener('click', () => { api.close(); setTimeout(() => it.run(api), 180); });
+      wrap.appendChild(b);
+    }
+    body.appendChild(wrap);
+  } });
+}
+
+function openConfirm({ title, note, confirmLabel, danger = true, onDone }){
+  return openSheet({ title, build(body, api){
+    if (note) body.appendChild(node('<p class="sheet-note">' + esc(note) + '</p>'));
+    const row = node('<div class="btn-row">' +
+        '<button class="btn ghost">' + esc(t('cancel')) + '</button>' +
+        '<button class="btn ' + (danger ? 'danger' : 'primary') + '">' + esc(confirmLabel) + '</button>' +
+      '</div>');
+    const [cancel, ok] = $$('button', row);
+    cancel.addEventListener('click', () => api.close());
+    ok.addEventListener('click', () => { api.close(); setTimeout(onDone, 160); });
+    body.appendChild(row);
+  } });
+}
+
+/* ------------------------------------------------------------------ toast */
+let toastTimer = null;
+function toast(msg, action){
+  const el = $('#toast');
+  el.innerHTML = '<span>' + esc(msg) + '</span>';
+  if (action){
+    const b = node('<button>' + esc(action.label) + '</button>');
+    b.addEventListener('click', () => { hideToast(); action.run(); });
+    el.appendChild(b);
+  }
+  el.classList.add('in');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, action ? 6500 : 2400);
+}
+function hideToast(){ clearTimeout(toastTimer); $('#toast').classList.remove('in'); }
+
+/* ==========================================================================
+   Numeric keypad — page counts are always typed here rather than in a text
+   field, so the phone keyboard never slides the sheet around, and the digits
+   stay big enough to hit while holding a book.
+   ========================================================================== */
+function openKeypad({ title, value = 0, total = 0, quick = [], onDone }){
+  let s = value > 0 ? String(value) : '';
+  return openSheet({ title, build(body, api){
+    const wrap = node('<div>' +
+      '<div class="kp-val zero">0</div>' +
+      '<div class="kp-hint"></div>' +
+      (total ? '<div class="kp-bar"><i></i></div>' : '') +
+      (quick.length ? '<div class="kp-quick"></div>' : '') +
+      '<div class="keys"></div>' +
+    '</div>');
+    const val = $('.kp-val', wrap), hint = $('.kp-hint', wrap);
+    const bar = $('.kp-bar i', wrap), keys = $('.keys', wrap);
+
+    const num = () => Math.min(999999, parseInt(s || '0', 10) || 0);
+    function paint(){
+      const n = num();
+      val.textContent = s === '' ? '0' : String(n);
+      val.classList.toggle('zero', s === '');
+      if (total){
+        const p = clamp(Math.round(n / total * 100), 0, 100);
+        hint.innerHTML = esc(t('ofTotal', total)) + ' · <b>' + p + '%</b>';
+        bar.style.width = p + '%';
+      } else {
+        hint.textContent = t('pages');
+      }
+    }
+    for (const q of quick){
+      const b = node('<button>' + esc(q.label) + '</button>');
+      b.addEventListener('click', () => { s = String(Math.max(0, q.value)); paint(); });
+      $('.kp-quick', wrap).appendChild(b);
+    }
+    const layout = ['1','2','3','4','5','6','7','8','9','del','0','ok'];
+    for (const k of layout){
+      const isDel = k === 'del', isOk = k === 'ok';
+      const b = node('<button class="key' + (isDel ? ' util' : isOk ? ' ok' : '') + '">' +
+        (isDel ? icon('del', 24) : isOk ? icon('check', 24) : k) + '</button>');
+      b.addEventListener('click', () => {
+        if (isOk){ api.close(); const n = num(); setTimeout(() => onDone(n), 150); return; }
+        if (isDel){ s = s.slice(0, -1); }
+        else if (s.length < 6){ s = (s === '' && k === '0') ? '' : s + k; }
+        paint();
+      });
+      keys.appendChild(b);
+    }
+    body.appendChild(wrap);
+    paint();
+  } });
+}
+
+/* ==========================================================================
+   The shelf
+   ========================================================================== */
+let SORT = localStorage.getItem('bookresio.sort') || 'recent';
+
+function sortedBooks(){
+  const arr = [...books.values()];
+  const byTitle = (a, b) => (a.title || '').localeCompare(b.title || '', LANG, { sensitivity:'base' });
+  if (SORT === 'title') arr.sort(byTitle);
+  else if (SORT === 'progress') arr.sort((a, b) => pctOf(b) - pctOf(a) || byTitle(a, b));
+  else if (SORT === 'added') arr.sort((a, b) => b.createdAt - a.createdAt);
+  else arr.sort((a, b) => (b.lastReadAt || b.updatedAt || 0) - (a.lastReadAt || a.updatedAt || 0));
+  /* a running timer always floats to the top, whatever the order */
+  arr.sort((a, b) => (b.runningSince ? 1 : 0) - (a.runningSince ? 1 : 0));
+  return arr;
+}
+
+function coverHTML(b, cls = ''){
+  const initial = (b.title || '?').trim().charAt(0).toUpperCase() || '?';
+  return '<div class="cover ' + cls + '">' +
+    (b.coverId
+      ? '<img data-asset="' + esc(b.coverId) + '" alt="">'
+      : '<div class="initial">' + esc(initial) + '</div>') +
+    '</div>';
+}
+
+function shelfView(){
+  const el = node('<div class="view">' +
+    '<div class="bar">' +
+      '<div class="bar-side left"><button class="bar-btn" data-act="settings" aria-label="Settings">' + icon('gear') + '</button></div>' +
+      '<div class="bar-title">Bookresio</div>' +
+      '<div class="bar-side right"><button class="bar-btn" data-act="sort" aria-label="Sort">' + icon('sort') + '</button></div>' +
+    '</div>' +
+    '<div class="scroll"><div class="pad">' +
+      '<div class="hero-mark">' + logoMark() + '</div>' +
+      '<h1 class="big-title">Bookresio</h1>' +
+      '<p class="count"></p>' +
+      '<div class="list"></div>' +
+      '<div class="hint-slot"></div>' +
+    '</div></div>' +
+    '<button class="fab" aria-label="Add book">' + icon('plus', 26) + '</button>' +
+  '</div>');
+
+  const list = $('.list', el), count = $('.count', el);
+  const view = { el, kind:'shelf', render };
+
+  function render(){
+    const arr = sortedBooks();
+    const totalSec = arr.reduce((s, b) => s + elapsedOf(b), 0);
+    count.textContent = t('shelfSub', arr.length, fmtHM(totalSec));
+    list.innerHTML = '';
+    if (!arr.length){
+      list.appendChild(node('<div class="empty">' +
+        '<div class="em-mark">' + logoMark() + '</div>' +
+        '<h3>' + esc(t('emptyT')) + '</h3>' +
+        '<p>' + esc(t('emptyB')) + '</p>' +
+      '</div>'));
+      return;
+    }
+    for (const b of arr) list.appendChild(bookRow(b));
+    paintBars(list);
+    hydrate(list);
+  }
+
+  function bookRow(b){
+    const p = pctOf(b), done = isDone(b);
+    const meta = [];
+    if (b.pages) meta.push(esc(t('pagesOf', b.read, b.pages)));
+    else meta.push(esc(t('noPages')));
+    const sec = elapsedOf(b);
+    if (sec >= 30) meta.push('<span class="sep"></span>' + esc(fmtHM(sec)));
+
+    const row = node('<button class="book' + (done ? ' done' : '') + '" data-id="' + esc(b.id) + '">' +
+      coverHTML(b) +
+      '<div class="book-main">' +
+        '<div class="book-head">' +
+          '<div class="book-title">' + esc(b.title || t('untitled')) + '</div>' +
+          '<div class="book-pct">' + p + '%</div>' +
+        '</div>' +
+        (b.author ? '<div class="book-author">' + esc(b.author) + '</div>' : '') +
+        '<div class="pbar"><i data-pct="' + p + '"></i></div>' +
+        '<div class="book-meta">' + meta.join('') +
+          (b.runningSince ? '<span class="sep"></span><span class="live"><span class="pulse"></span>' +
+            '<span data-live="' + esc(b.id) + '">' + fmtClock(elapsedOf(b)) + '</span></span>' : '') +
+        '</div>' +
+      '</div>' +
+    '</button>');
+    row.addEventListener('click', () => openBook(b.id));
+    return row;
+  }
+
+  $('.fab', el).addEventListener('click', () => bookForm(null));
+  $('[data-act="settings"]', el).addEventListener('click', settingsSheet);
+  $('[data-act="sort"]', el).addEventListener('click', sortSheet);
+  wireBar(view);
+  render();
+  return view;
+}
+
+function sortSheet(){
+  const opt = (key, label) => ({ icon:'sort', label, checked:SORT === key, run(){
+    SORT = key; localStorage.setItem('bookresio.sort', key); refreshViews();
+  } });
+  openMenu(t('sortBy'), [
+    opt('recent',   t('sRecent')),
+    opt('progress', t('sProgress')),
+    opt('title',    t('sTitle')),
+    opt('added',    t('sAdded')),
+  ]);
+}
+
+/* ==========================================================================
+   Add / edit a book
+   ========================================================================== */
+function bookForm(existing){
+  const b = existing || makeBook();
+  let coverId = b.coverId, pages = b.pages;
+
+  openSheet({ title: existing ? t('editBook') : t('addBook'), build(body, api){
+    const wrap = node('<div>' +
+      '<div class="bf-top">' +
+        '<div class="bf-cover"><button class="cover-btn">' + coverHTML({ title:b.title, coverId }) + '</button>' +
+          '<div class="cam">' + icon('camera', 17) + '</div></div>' +
+        '<div class="bf-fields">' +
+          '<label class="field"><span>' + esc(t('title')) + '</span>' +
+            '<input class="f-title" type="text" autocapitalize="words" autocorrect="off" ' +
+            'spellcheck="false" placeholder="' + esc(t('titlePh')) + '"></label>' +
+          '<label class="field"><span>' + esc(t('author')) + '</span>' +
+            '<input class="f-author" type="text" autocapitalize="words" autocorrect="off" ' +
+            'spellcheck="false" placeholder="' + esc(t('authorPh')) + '"></label>' +
+        '</div>' +
+      '</div>' +
+      '<button class="tile pages-tile" style="width:100%;margin:8px 2px 4px">' +
+        '<span>' + esc(t('totalPages')) + '</span><b></b></button>' +
+    '</div>');
+
+    const tIn = $('.f-title', wrap), aIn = $('.f-author', wrap);
+    tIn.value = b.title || ''; aIn.value = b.author || '';
+    const pagesB = $('.pages-tile b', wrap);
+    const paintPages = () => {
+      pagesB.textContent = pages ? String(pages) : '—';
+      pagesB.classList.toggle('muted', !pages);
+    };
+    paintPages();
+
+    const coverBtn = $('.cover-btn', wrap);
+    const paintCover = () => {
+      coverBtn.innerHTML = coverHTML({ title:tIn.value, coverId });
+      hydrate(coverBtn);
+    };
+    tIn.addEventListener('input', () => { if (!coverId) paintCover(); });
+    coverBtn.addEventListener('click', () => {
+      if (!coverId) return pick();
+      openMenu(t('cover'), [
+        { icon:'image', label:t('pickCover'), run:pick },
+        { icon:'trash', label:t('removeCover'), danger:true, run(){ coverId = null; paintCover(); } },
+      ]);
+    });
+    function pick(){
+      pickImages(async files => {
+        const { id } = await storeImage(files[0], 1200);
+        coverId = id; paintCover();
+      });
+    }
+
+    $('.pages-tile', wrap).addEventListener('click', () => {
+      openKeypad({ title:t('totalPages'), value:pages, onDone(n){ pages = n; paintPages(); } });
+    });
+
+    const row = node('<div class="btn-row">' +
+      '<button class="btn ghost">' + esc(t('cancel')) + '</button>' +
+      '<button class="btn primary">' + esc(t('save')) + '</button></div>');
+    const [cancel, ok] = $$('button', row);
+    cancel.addEventListener('click', () => api.close());
+    ok.addEventListener('click', () => {
+      b.title = tIn.value.trim();
+      b.author = aIn.value.trim();
+      b.coverId = coverId;
+      b.pages = pages;
+      if (b.pages && b.read > b.pages) b.read = b.pages;
+      /* raising the page count puts a "finished" book back in progress */
+      if (b.pages && b.read < b.pages) b.finishedAt = null;
+      if (!existing){ books.set(b.id, b); b.lastReadAt = Date.now(); }
+      touchBook(b); flush();
+      api.close();
+      refreshViews();
+      if (!existing) setTimeout(() => openBook(b.id), 220);
+    });
+
+    body.append(wrap, row);
+    if (!existing) setTimeout(() => tIn.focus(), 300);
+  } });
+}
+
+/* ==========================================================================
+   One book
+   ========================================================================== */
+function openBook(id){ if (books.has(id)) pushView(bookView(id)); }
+
+function bookView(id){
+  const el = node('<div class="view">' +
+    '<div class="bar">' +
+      '<div class="bar-side left"><button class="bar-btn back" data-act="back">' +
+        icon('back', 24) + '<span>' + esc(t('shelf')) + '</span></button></div>' +
+      '<div class="bar-title"></div>' +
+      '<div class="bar-side right"><button class="bar-btn" data-act="more" aria-label="More">' + icon('more') + '</button></div>' +
+    '</div>' +
+    '<div class="scroll"><div class="pad">' +
+      '<div class="book-hero"></div>' +
+      '<div class="card prog"></div>' +
+      '<div class="card timer"></div>' +
+      '<div class="sec-h"><h2>' + esc(t('notes')) + '</h2>' +
+        '<button class="add-btn" data-act="note">' + icon('plus', 17) + esc(t('add')) + '</button></div>' +
+      '<div class="list notes"></div>' +
+    '</div></div>' +
+  '</div>');
+
+  const hero = $('.book-hero', el), prog = $('.prog', el);
+  const timerCard = $('.timer', el), noteList = $('.notes', el);
+  const view = { el, kind:'book', id, render, mounted, dispose, resumed:mounted };
+  let tick = null;
+
+  function b(){ return books.get(id); }
+
+  function render(){
+    const bk = b();
+    if (!bk){ goBack(); return; }
+    const p = pctOf(bk), done = isDone(bk);
+    $('.bar-title', el).textContent = bk.title || t('untitled');
+
+    hero.innerHTML =
+      coverHTML(bk, 'xl') +
+      '<h1>' + esc(bk.title || t('untitled')) + '</h1>' +
+      (bk.author ? '<div class="who">' + esc(bk.author) + '</div>' : '') +
+      (done ? '<div class="chip">' + icon('check', 15) + esc(t('finishedC')) + '</div>' : '');
+    $('.cover', hero).addEventListener('click', () => bookForm(bk));
+
+    prog.classList.toggle('done', done);
+    prog.innerHTML =
+      '<p class="card-h">' + esc(t('progress')) + '</p>' +
+      '<div class="prog-top">' +
+        '<div class="prog-pct">' + p + '<small>%</small></div>' +
+        '<div class="prog-left">' +
+          (bk.pages ? esc(t('pagesOf', bk.read, bk.pages)) +
+            (done ? '' : '<br>' + esc(t('left', bk.pages - bk.read)))
+          : esc(t('noPages'))) +
+        '</div>' +
+      '</div>' +
+      '<div class="pbar lg"><i data-pct="' + p + '"></i></div>' +
+      '<div class="tiles">' +
+        '<button class="tile" data-act="read"><span>' + esc(t('pagesRead')) + '</span>' +
+          '<b class="' + (bk.read ? '' : 'muted') + '">' + (bk.read || '—') + '</b></button>' +
+        '<button class="tile" data-act="total"><span>' + esc(t('totalPages')) + '</span>' +
+          '<b class="' + (bk.pages ? '' : 'muted') + '">' + (bk.pages || '—') + '</b></button>' +
+      '</div>';
+    paintBars(prog);
+    $('[data-act="read"]', prog).addEventListener('click', askRead);
+    $('[data-act="total"]', prog).addEventListener('click', askTotal);
+
+    paintTimer();
+    renderNotes();
+    hydrate(el);
+  }
+
+  /* ------------------------------------------------------------- pages */
+  function askRead(){
+    const bk = b();
+    if (!bk.pages) return askTotal(true);
+    /* the three jumps that actually happen: one more page, a chunk, the end */
+    const quick = [
+      { label:'+1',  value:Math.min(bk.pages, bk.read + 1) },
+      { label:'+10', value:Math.min(bk.pages, bk.read + 10) },
+      { label:String(bk.pages), value:bk.pages },
+    ];
+    openKeypad({ title:t('pagesRead'), value:bk.read, total:bk.pages, quick, onDone(n){
+      const bk2 = b(); if (!bk2) return;
+      const was = isDone(bk2);
+      bk2.read = clamp(n, 0, bk2.pages || n);
+      bk2.lastReadAt = Date.now();
+      if (bk2.pages && bk2.read >= bk2.pages){ if (!bk2.finishedAt) bk2.finishedAt = Date.now(); }
+      else bk2.finishedAt = null;
+      touchBook(bk2); flush(); render(); refreshShelf();
+      if (!was && isDone(bk2)) toast(t('finishedToast'));
+    } });
+  }
+  function askTotal(thenRead = false){
+    const bk = b();
+    openKeypad({ title:t('totalPages'), value:bk.pages, onDone(n){
+      const bk2 = b(); if (!bk2) return;
+      bk2.pages = n;
+      if (bk2.read > n) bk2.read = n;
+      if (!n || bk2.read < n) bk2.finishedAt = null;
+      touchBook(bk2); flush(); render(); refreshShelf();
+      if (thenRead && n) setTimeout(askRead, 220);
+    } });
+  }
+
+  /* ------------------------------------------------------------- timer */
+  function paintTimer(){
+    const bk = b(), on = !!bk.runningSince, sec = elapsedOf(bk);
+    const perHour = (bk.read && sec > 600) ? Math.round(bk.read / (sec / 3600)) : 0;
+    timerCard.innerHTML =
+      '<p class="card-h">' + esc(t('timer')) + '</p>' +
+      '<div class="clock' + (on ? ' on' : '') + '">' + fmtClock(sec) + '</div>' +
+      '<div class="timer-sub">' +
+        (on ? esc(t('running'))
+            : esc(fmtHM(bk.seconds)) + ' ' + esc(t('totalTime')) +
+              (perHour ? ' · ' + esc(t('pace', perHour)) : '')) +
+      '</div>' +
+      '<button class="btn-timer' + (on ? ' on' : '') + '">' +
+        icon(on ? 'stop' : 'play', 19) + esc(on ? t('stop') : t('start')) + '</button>';
+    $('.btn-timer', timerCard).addEventListener('click', toggleTimer);
+  }
+  function toggleTimer(){
+    const bk = b();
+    if (bk.runningSince){
+      const ran = stopTimer(bk);
+      render(); refreshShelf();
+      if (ran > 60) toast(t('sessionAdded', fmtHM(ran)), { label:t('updatePages'), run:askRead });
+    } else {
+      startTimer(bk);
+      render(); refreshShelf();
+    }
+    syncTick();
+  }
+  /* The clock is redrawn from the wall clock, so a suspended tab (or a locked
+     phone) comes back showing the right time rather than a frozen one. */
+  function syncTick(){
+    clearInterval(tick); tick = null;
+    if (!b() || !b().runningSince) return;
+    tick = setInterval(() => {
+      const bk = b(); if (!bk || !bk.runningSince) return syncTick();
+      const c = $('.clock', timerCard);
+      if (c) c.textContent = fmtClock(elapsedOf(bk));
+      const live = $('[data-live="' + bk.id + '"]', document);
+      if (live) live.textContent = fmtClock(elapsedOf(bk));
+    }, 500);
+  }
+  function mounted(){ syncTick(); }
+  function dispose(){ clearInterval(tick); tick = null; }
+
+  /* ------------------------------------------------------------- notes */
+  function renderNotes(){
+    const arr = notesOf(id);
+    noteList.innerHTML = '';
+    if (!arr.length){
+      noteList.appendChild(node('<div class="empty" style="padding:26px 18px 12px">' +
+        '<h3>' + esc(t('noNotesT')) + '</h3><p>' + esc(t('noNotesB')) + '</p></div>'));
+      return;
+    }
+    for (const n of arr){
+      const txt = (n.text || '').trim();
+      const shots = (n.images || []).slice(0, 4);
+      const rest = (n.images || []).length - shots.length;
+      const row = node('<button class="note" data-id="' + esc(n.id) + '">' +
+        '<div class="note-text' + (txt ? '' : ' ph') + '">' + esc(txt || t('newNote')) + '</div>' +
+        (shots.length ? '<div class="note-thumbs">' +
+          shots.map(i => '<div class="th"><img data-asset="' + esc(i) + '" alt=""></div>').join('') +
+          (rest > 0 ? '<div class="more">+' + rest + '</div>' : '') + '</div>' : '') +
+        '<div class="note-date">' + esc(relTime(n.updatedAt)) + '</div>' +
+      '</button>');
+      row.addEventListener('click', () => pushView(noteView(n.id)));
+      noteList.appendChild(row);
+    }
+    hydrate(noteList);
+  }
+
+  $('[data-act="back"]', el).addEventListener('click', goBack);
+  $('[data-act="note"]', el).addEventListener('click', () => {
+    const n = makeNote(id);
+    notes.set(n.id, n); touchNote(n); flush();
+    renderNotes();
+    pushView(noteView(n.id, true));
+  });
+  $('[data-act="more"]', el).addEventListener('click', () => {
+    const bk = b();
+    openMenu(bk.title || t('untitled'), [
+      { icon:'pencil', label:t('edit'), run(){ bookForm(bk); } },
+      { icon:'flag', label:isDone(bk) ? t('markUnfinished') : t('markFinished'), run(){
+        const bk2 = b(); if (!bk2) return;
+        if (isDone(bk2)){ bk2.finishedAt = null; if (bk2.pages && bk2.read >= bk2.pages) bk2.read = Math.max(0, bk2.pages - 1); }
+        else { bk2.finishedAt = Date.now(); if (bk2.pages) bk2.read = bk2.pages; }
+        touchBook(bk2); flush(); render(); refreshShelf();
+      } },
+      '-',
+      { icon:'trash', label:t('deleteBook'), danger:true, run(){
+        openConfirm({ title:t('deleteBookQ', bk.title || t('untitled')), note:t('deleteBookNote'),
+          confirmLabel:t('delete'), onDone(){ removeBook(id); } });
+      } },
+    ]);
+  });
+  wireBar(view);
+  render();
+  return view;
+}
+
+function refreshShelf(){ const s = views[0]; if (s && s.render) s.render(); }
+
+async function removeBook(id){
+  const bk = books.get(id);
+  if (!bk) return;
+  if (bk.runningSince) stopTimer(bk);
+  const mine = notesOf(id);
+  books.delete(id);
+  for (const n of mine) notes.delete(n.id);
+  await idb('books', 'readwrite', st => st.delete(id));
+  await idb('notes', 'readwrite', st => { for (const n of mine) st.delete(n.id); });
+  goBack();
+  refreshShelf();
+  toast(t('deleted'));
+  gcAssets();
+}
+
+/* ==========================================================================
+   A note — free text and photos of pages worth keeping
+   ========================================================================== */
+function noteView(noteId, focus = false){
+  const el = node('<div class="view">' +
+    '<div class="bar">' +
+      '<div class="bar-side left"><button class="bar-btn back" data-act="back">' +
+        icon('back', 24) + '<span></span></button></div>' +
+      '<div class="bar-title">' + esc(t('notes')) + '</div>' +
+      '<div class="bar-side right"><button class="bar-btn" data-act="more" aria-label="More">' + icon('more') + '</button></div>' +
+    '</div>' +
+    '<div class="scroll"><div class="editor">' +
+      '<textarea class="note-area" placeholder=""></textarea>' +
+      '<div class="shots"></div>' +
+    '</div></div>' +
+    '<div class="editor-bar">' +
+      '<button data-act="photo">' + icon('camera', 19) + '<span></span></button>' +
+    '</div>' +
+  '</div>');
+
+  const area = $('.note-area', el), shots = $('.shots', el);
+  const view = { el, kind:'note', id:noteId, render, willUnmount };
+
+  function n(){ return notes.get(noteId); }
+
+  /* Grow with the text instead of scrolling inside a box. */
+  function autoGrow(){
+    area.style.height = 'auto';
+    area.style.height = Math.max(130, area.scrollHeight) + 'px';
+  }
+
+  function render(){
+    const nt = n();
+    if (!nt){ goBack(); return; }
+    const bk = books.get(nt.bookId);
+    $('.bar-btn.back span', el).textContent = bk ? (bk.title || t('untitled')) : t('shelf');
+    $('[data-act="photo"] span', el).textContent = t('addPhoto');
+    area.placeholder = t('notePh');
+    if (area.value !== nt.text) area.value = nt.text || '';
+    autoGrow();
+    renderShots();
+  }
+
+  function renderShots(){
+    const nt = n();
+    shots.innerHTML = '';
+    for (const imgId of (nt.images || [])){
+      const s = node('<button class="shot"><img data-asset="' + esc(imgId) + '" alt=""></button>');
+      s.addEventListener('click', () => openViewer(nt.images, nt.images.indexOf(imgId), removeShot));
+      shots.appendChild(s);
+    }
+    hydrate(shots);
+  }
+
+  function removeShot(imgId){
+    const nt = n(); if (!nt) return;
+    nt.images = nt.images.filter(i => i !== imgId);
+    touchNote(nt); flush();
+    renderShots();
+    gcAssets();
+  }
+
+  area.addEventListener('input', () => {
+    const nt = n(); if (!nt) return;
+    nt.text = area.value;
+    touchNote(nt);
+    autoGrow();
+  });
+
+  $('[data-act="back"]', el).addEventListener('click', goBack);
+  $('[data-act="photo"]', el).addEventListener('click', () => {
+    pickImages(async files => {
+      const nt = n(); if (!nt) return;
+      for (const f of files){
+        const { id } = await storeImage(f);
+        nt.images.push(id);
+      }
+      touchNote(nt); flush(); renderShots();
+    }, true);
+  });
+  $('[data-act="more"]', el).addEventListener('click', () => {
+    openMenu(t('notes'), [
+      { icon:'trash', label:t('delete'), danger:true, run(){
+        openConfirm({ title:t('deleteNoteQ'), note:t('deleteNoteNote'), confirmLabel:t('delete'),
+          async onDone(){
+            const nt = n(); if (!nt) return;
+            notes.delete(noteId);
+            dirtyNotes.delete(noteId);
+            await idb('notes', 'readwrite', st => st.delete(noteId));
+            goBack();                       // willUnmount refreshes the book
+            toast(t('deleted'));
+            gcAssets();
+          } });
+      } },
+    ]);
+  });
+
+  function willUnmount(){
+    const nt = n();
+    /* an untouched blank note leaves nothing behind */
+    if (nt && !nt.text.trim() && !nt.images.length){
+      notes.delete(noteId);
+      dirtyNotes.delete(noteId);
+      idb('notes', 'readwrite', st => st.delete(noteId));
+    } else if (nt) flush();
+    /* popViewNow has already dropped this view, so the top of the stack is
+       the book we came from — it needs to see the note as it now stands */
+    const parent = views[views.length - 1];
+    if (parent && parent.render) parent.render();
+  }
+
+  wireBar(view);
+  render();
+  if (focus) setTimeout(() => area.focus(), 460);
+  return view;
+}
+
+/* ==========================================================================
+   Photo viewer — pinch to zoom, drag down to close
+   ========================================================================== */
+const viewerEl = $('#viewer'), vImg = $('#vimg');
+$('#vclose').innerHTML = icon('close', 22);
+$('#vdel').innerHTML = icon('trash', 21);
+let vLayer = null, vList = [], vIndex = 0, vOnDelete = null;
+let vs = 1, vx = 0, vy = 0;
+const vPointers = new Map();
+let vStart = null;
+
+async function openViewer(list, index, onDelete){
+  vList = list.slice(); vIndex = index; vOnDelete = onDelete || null;
+  const u = await assetURL(vList[vIndex]);
+  if (!u) return;
+  vImg.src = u;
+  resetV();
+  viewerEl.classList.add('up');
+  viewerEl.getBoundingClientRect();
+  viewerEl.classList.add('in');
+  $('#vdel').style.display = vOnDelete ? 'grid' : 'none';
+  vLayer = pushLayer(closeViewerNow);
+}
+function closeViewerNow(){
+  viewerEl.classList.remove('in');
+  setTimeout(() => { viewerEl.classList.remove('up'); vImg.src = ''; }, 300);
+  viewerEl.style.background = '';
+  vLayer = null;
+}
+const closeViewer = () => { if (vLayer) closeLayer(vLayer); else closeViewerNow(); };
+
+function resetV(){ vs = 1; vx = 0; vy = 0; applyV(0); }
+function applyV(ms = 0){
+  vImg.style.transition = ms ? 'transform ' + ms + 'ms var(--ease)' : 'none';
+  vImg.style.transform = 'translate3d(' + vx + 'px,' + vy + 'px,0) scale(' + vs + ')';
+}
+const centroid = () => {
+  const p = [...vPointers.values()];
+  return { x:p.reduce((s, q) => s + q.x, 0) / p.length,
+           y:p.reduce((s, q) => s + q.y, 0) / p.length,
+           d:p.length > 1 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0 };
+};
+viewerEl.addEventListener('pointerdown', e => {
+  if (e.target.closest('.v-close,.v-del')) return;
+  viewerEl.setPointerCapture(e.pointerId);
+  vPointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  vStart = { ...centroid(), vs, vx, vy, t:performance.now(), moved:0 };
+});
+viewerEl.addEventListener('pointermove', e => {
+  if (!vPointers.has(e.pointerId) || !vStart) return;
+  vPointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  const c = centroid();
+  if (vPointers.size > 1 && vStart.d > 0){
+    vs = clamp(vStart.vs * (c.d / vStart.d), .5, 6);
+    vx = vStart.vx + (c.x - vStart.x);
+    vy = vStart.vy + (c.y - vStart.y);
+  } else {
+    vx = vStart.vx + (c.x - vStart.x);
+    vy = vStart.vy + (c.y - vStart.y);
+    if (vs <= 1.02){                       // not zoomed → the drag closes it
+      const f = clamp(1 - Math.abs(vy) / 420, .3, 1);
+      vs = clamp(f, .82, 1);
+      viewerEl.style.background = 'rgba(24,32,40,' + (0.97 * f) + ')';
+    }
+  }
+  vStart.moved = Math.max(vStart.moved, Math.hypot(c.x - vStart.x, c.y - vStart.y));
+  applyV(0);
+});
+function endPointer(e){
+  if (!vPointers.has(e.pointerId)) return;
+  vPointers.delete(e.pointerId);
+  if (vPointers.size) { vStart = { ...centroid(), vs, vx, vy, t:performance.now(), moved:0 }; return; }
+  const quick = vStart && performance.now() - vStart.t < 280 && vStart.moved < 8;
+  if (vs <= 1.02 && Math.abs(vy) > 110){ closeViewer(); vStart = null; return; }
+  if (quick && vs <= 1.02){ closeViewer(); vStart = null; return; }
+  viewerEl.style.background = '';
+  if (vs <= 1){ resetV(); applyV(220); }
+  else applyV(180);
+  vStart = null;
+}
+viewerEl.addEventListener('pointerup', endPointer);
+viewerEl.addEventListener('pointercancel', endPointer);
+$('#vclose').addEventListener('click', closeViewer);
+$('#vdel').addEventListener('click', () => {
+  const id = vList[vIndex], del = vOnDelete;
+  openConfirm({ title:t('deletePhotoQ'), confirmLabel:t('delete'), onDone(){
+    closeViewer();
+    if (del) del(id);
+  } });
+});
+
+/* ==========================================================================
+   Settings, backups, language
+   ========================================================================== */
+function settingsSheet(){
+  openMenu(t('settings'), [
+    { icon:'globe', label:t('language'), value:LANG === 'pl' ? 'Polski' : 'English', run(){
+      openMenu(t('language'), [
+        { icon:'globe', label:'English', checked:LANG === 'en', run(){ setLang('en'); } },
+        { icon:'globe', label:'Polski',  checked:LANG === 'pl', run(){ setLang('pl'); } },
+      ]);
+    } },
+    '-',
+    { icon:'down',  label:t('exportB'), run:exportBackup },
+    { icon:'up',    label:t('importB'), run:importBackup },
+    { icon:'broom', label:t('cleanup'), run(){ gcAssets().then(n => toast(t('cleanupDone', n))); } },
+    '-',
+    { icon:'info', label:t('about'), run(){
+      openSheet({ title:'Bookresio', build(body, api){
+        const box = node('<div style="text-align:center;padding:4px 6px 8px">' +
+          '<div style="color:var(--blue);width:58px;margin:0 auto 16px">' + logoMark() + '</div>' +
+          '<p class="sheet-note" style="margin-bottom:20px">' + esc(t('aboutBody')) + '</p></div>');
+        $('svg', box).setAttribute('style', 'width:100%;height:auto;display:block');
+        const b = node('<div class="btn-row"><button class="btn ghost">' + esc(t('close')) + '</button></div>');
+        $('button', b).addEventListener('click', () => api.close());
+        body.append(box, b);
+      } });
+    } },
+  ]);
+}
+
+/* Rebuild every open view in the new language, in place, so the history stack
+   (and therefore the back gesture) stays exactly as it was. */
+function setLang(l){
+  LANG = l; localStorage.setItem('bookresio.lang', l);
+  document.documentElement.lang = l;
+  for (let i = 0; i < views.length; i++){
+    const old = views[i];
+    old.dispose && old.dispose();       // not willUnmount: nobody is leaving
+    const fresh = old.kind === 'book' ? bookView(old.id)
+                : old.kind === 'note' ? noteView(old.id)
+                :                       shelfView();
+    fresh.layer = old.layer;
+    if (fresh.layer) fresh.layer.onClose = () => popViewNow(fresh);
+    if (i < views.length - 1) fresh.el.classList.add('behind');
+    old.el.replaceWith(fresh.el);
+    views[i] = fresh;
+  }
+  const top = views[views.length - 1];
+  top && top.mounted && top.mounted();
+}
+
+async function exportBackup(){
+  await flush();
+  const assets = await dbAll('assets');
+  const enc = a => new Promise(res => {
+    const fr = new FileReader();
+    fr.onload = () => res({ id:a.id, w:a.w, h:a.h, mime:a.mime, data:fr.result });
+    fr.onerror = () => res(null);
+    fr.readAsDataURL(a.blob);
+  });
+  const payload = {
+    app:'bookresio', version:1, exportedAt:new Date().toISOString(),
+    books:[...books.values()],
+    notes:[...notes.values()],
+    assets:(await Promise.all(assets.map(enc))).filter(Boolean),
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'bookresio-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast(t('exported'));
+}
+function dataURLtoBlob(url){
+  const [head, b64] = String(url).split(',');
+  const mime = (head.match(/data:([^;]+)/) || [, 'application/octet-stream'])[1];
+  const bin = atob(b64 || '');
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return new Blob([buf], { type:mime });
+}
+function importBackup(){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'application/json,.json';
+  inp.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+  document.body.appendChild(inp);
+  inp.addEventListener('change', async () => {
+    const f = inp.files[0]; inp.remove();
+    if (!f) return;
+    let data;
+    try { data = JSON.parse(await f.text()); } catch { return toast(t('badFile')); }
+    if (!data || data.app !== 'bookresio' || !Array.isArray(data.books)) return toast(t('badFile'));
+    openConfirm({ title:t('restoreQ'), note:t('restoreNote'), confirmLabel:t('restore'), async onDone(){
+      for (const b of books.values()) if (b.runningSince) stopTimer(b);
+      await idb('books', 'readwrite', st => st.clear());
+      await idb('notes', 'readwrite', st => st.clear());
+      await idb('assets', 'readwrite', st => st.clear());
+      for (const u of urls.values()) URL.revokeObjectURL(u);
+      urls.clear(); seenAssets.clear();
+      books.clear(); notes.clear();
+      await idb('books', 'readwrite', st => data.books.forEach(b => st.put(b)));
+      await idb('notes', 'readwrite', st => (data.notes || []).forEach(n => st.put(n)));
+      await idb('assets', 'readwrite', st => (data.assets || []).forEach(a =>
+        st.put({ id:a.id, w:a.w, h:a.h, mime:a.mime, blob:dataURLtoBlob(a.data) })));
+      /* Start the app over rather than unwinding a view stack that describes
+         books which no longer exist. The toast is picked up after the load. */
+      localStorage.setItem('bookresio.restored', '1');
+      location.reload();
+    } });
+  });
+  inp.click();
+}
+
+/* ==========================================================================
+   iOS trimmings
+   ========================================================================== */
+/* Lift the note editor's toolbar above the on-screen keyboard. */
+function syncKeyboard(){
+  const vv = visualViewport;
+  if (!vv) return;
+  const apply = () => {
+    const kb = Math.max(0, innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty('--kb', (kb > 90 ? kb : 0) + 'px');
+  };
+  vv.addEventListener('resize', apply);
+  vv.addEventListener('scroll', apply);
+  apply();
+}
+
+function maybeHint(){
+  if (localStorage.getItem('bookresio.hint')) return;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (standalone || !iOS) return;
+  const slot = $('.hint-slot', views[0].el);
+  if (!slot) return;
+  const h = node('<div class="hint"><div>' + t('hintT') + '</div>' +
+    '<button>' + esc(t('got')) + '</button></div>');
+  $('button', h).addEventListener('click', () => {
+    localStorage.setItem('bookresio.hint', '1');
+    h.style.transition = 'opacity .3s ease'; h.style.opacity = '0';
+    setTimeout(() => h.remove(), 320);
+  });
+  slot.appendChild(h);
+}
+
+/* ==========================================================================
+   Boot
+   ========================================================================== */
+(async function start(){
+  document.documentElement.lang = LANG;
+  db = await openDB();
+  for (const b of await dbAll('books')) books.set(b.id, b);
+  for (const n of await dbAll('notes')) notes.set(n.id, n);
+
+  pushView(shelfView(), false);
+  syncKeyboard();
+  maybeHint();
+  reapStaleTimers();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) reapStaleTimers(); });
+
+  if (localStorage.getItem('bookresio.restored')){
+    localStorage.removeItem('bookresio.restored');
+    setTimeout(() => toast(t('restored')), 400);
+  }
+
+  /* A shelf-wide tick, so a running timer stays live on the list too. */
+  setInterval(() => {
+    if (!anyRunning()) return;
+    for (const b of books.values()){
+      if (!b.runningSince) continue;
+      const live = $('[data-live="' + b.id + '"]');
+      if (live) live.textContent = fmtClock(elapsedOf(b));
+    }
+  }, 1000);
+
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  /* Boot is async, so "load" has usually gone by already — waiting for it
+     would mean the offline shell is never installed. */
+  if ('serviceWorker' in navigator){
+    const reg = () => navigator.serviceWorker.register('./sw.js').catch(() => {});
+    if (document.readyState === 'complete') reg();
+    else addEventListener('load', reg, { once:true });
+  }
+})();
+</script>
+</body>
+</html>
